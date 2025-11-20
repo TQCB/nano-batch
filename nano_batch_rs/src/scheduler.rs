@@ -1,12 +1,13 @@
 use std::collections::VecDeque;
 
 use crate::{
-    request::Request,
+    request::{Request, Status},
     block_allocator::BlockAllocator,
 };
 
 struct SchedulerOutput {
-    requests: Vec<Request>,
+    running: Vec<Request>,
+    finished: Vec<Request>
 }
 
 struct Queue {
@@ -15,6 +16,11 @@ struct Queue {
 
 /// Scheduler needs look at waiting and running requests at every step,
 /// and decide which ones get to run based on available memory (blocks).
+/// 
+/// TODO: Could be worthwhile to keep track of the minimum amount of blocks
+/// needed by a request. This would allow for early stopping when allocating
+/// blocks during scheduling, if the minimum amount of blocks needed by the 
+/// waiting requests is greater than the amount of free blocks
 pub struct Scheduler {
     waiting: Queue,
     running: Queue,
@@ -24,11 +30,20 @@ pub struct Scheduler {
 impl Scheduler {
     /// Handles which requests to run.
     /// 
-    /// Running jobs: the scheduler will make sure that each running job still
-    /// has space for 1 more token to generate. If not, the request needs to be
-    /// preempted and their associated blocks freed.
+    /// Running jobs: First the scheduler checks if a request should end (end
+    /// token, going past max_token amount) -- ending a request will free its
+    /// blocks and set the request to finished. The scheduler will then make sure
+    /// that each running job still has space for 1 more token to generate. If
+    /// not, the request needs to be preempted: it will be added back to the
+    /// waiting requests to be allocated a new block.
     /// 
-    /// Waiting jobs: if there are free blocks, move waiting requests into running.
+    /// Waiting jobs: if there are free blocks, then waiting requests need to be
+    /// allocated. Running blocks that had to preempt (and thus become waiting)
+    /// are given priority so they can continue running. If not, waiting requests
+    /// prefill their inputs and become running.
+    /// 
+    /// Once the above is handled, we return the current running and finished
+    /// requests.
     fn schedule(&self) -> SchedulerOutput {
         for request in self.running.requests {
             if request.should_end() {
@@ -37,7 +52,7 @@ impl Scheduler {
                 // remove request from running queue
             } else if request.should_preempt() {
                 // check how many tokens we need to generate, and how much space
-                // is left in the request's blocks
+                // is left in the request's blocks.
                 // if there is no more space, we send the request
                 // to the wait queue with queue.push_front()
             }
@@ -50,14 +65,17 @@ impl Scheduler {
         
         let n_free_blocks = self.block_alloctor.n_free_blocks();
         for request in self.waiting.requests {
-            let prefill_blocks_needed = request.prefill_len() / self.block_alloctor.block_size;
-            if prefill_blocks_needed <= n_free_blocks {
-                // if we have enough space to prefill,
-                // then we prefill and add to running.
-                n_free_blocks -= prefill_blocks_needed;
+            match request.status {
+                Status::WaitingDecode => {
+
+                },
+                Status::WaitingPrefill => {
+                    
+                },
+                _ => panic!("Running or finished job found in waiting queue.")
             }
         }
 
-        SchedulerOutput { requests: () }
+        SchedulerOutput { running: (), finished: ()}
     }
 }
