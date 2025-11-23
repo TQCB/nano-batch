@@ -2,34 +2,67 @@ use std::collections::{HashMap, VecDeque};
 
 use crate::{
     block_allocator::BlockAllocator,
-    request::{Request, RequestStatus}
+    request::{Request, RequestStatus},
 };
 
-struct SchedulerOutput {
-    scheduled_requests: Vec<String>, // request ids
-    block_tables: HashMap<String, Vec<u32>>, // request id: physical block
-    slot_mappings: Vec<u32>, // token index: physical slot
-    num_tokens_per_request: HashMap<String, usize>
+pub struct SchedulerOutput {
+    pub scheduled_requests: Vec<String>,         // request ids
+    pub block_tables: HashMap<String, Vec<u32>>, // request id: physical block
+    pub slot_mappings: Vec<u32>,                 // token index: physical slot
+    pub num_tokens_per_request: HashMap<String, usize>,
 }
 
 struct Queue {
-    requests: VecDeque<Request>
+    requests: VecDeque<Request>,
 }
 
 /// Scheduler needs look at waiting and running requests at every step,
 /// and decide which ones get to run based on available memory (blocks).
-/// 
+///
 /// TODO: Could be worthwhile to keep track of the minimum amount of blocks
 /// needed by a request. This would allow for early stopping when allocating
-/// blocks during scheduling, if the minimum amount of blocks needed by the 
+/// blocks during scheduling, if the minimum amount of blocks needed by the
 /// waiting requests is greater than the amount of free blocks
 pub struct Scheduler {
     waiting: Queue,
     running: Queue,
-    block_allocator: BlockAllocator,
+    pub block_allocator: BlockAllocator,
 }
 
 impl Scheduler {
+    pub fn new(block_allocator: BlockAllocator) -> Self {
+        Scheduler {
+            waiting: Queue {
+                requests: VecDeque::new(),
+            },
+            running: Queue {
+                requests: VecDeque::new(),
+            },
+            block_allocator,
+        }
+    }
+
+    pub fn add_request(&mut self, request: Request) {
+        self.waiting.requests.push_back(request);
+    }
+
+    pub fn update_request_token(&mut self, request_id: &str, new_token: u32) {
+        // Find the request in running requests and update it
+        for request in &mut self.running.requests {
+            if request.request_id == request_id {
+                request.output_token_ids.push(new_token);
+                return;
+            }
+        }
+        // If not found in running, it might be in waiting queue
+        for request in &mut self.waiting.requests {
+            if request.request_id == request_id {
+                request.output_token_ids.push(new_token);
+                return;
+            }
+        }
+    }
+
     fn generate_slot_mappings(
         scheduled_requests: &[Request],
         num_tokens_per_request: &HashMap<String, usize>,
@@ -48,7 +81,7 @@ impl Scheduler {
             let start_token_idx_in_request = match request.status {
                 RequestStatus::Preempted => 0,
                 RequestStatus::Waiting => request.num_tokens(),
-                _ => panic!("Should not be scheduling running or finished requests.")
+                _ => panic!("Should not be scheduling running or finished requests."),
             };
 
             for i in 0..num_tokens_to_process {
@@ -58,8 +91,9 @@ impl Scheduler {
                 let offset_in_block = current_token_idx_in_request % block_size;
 
                 if logical_block_idx >= request.logical_blocks.len() {
-                    panic!("Logical block index {} out of bounds for request {}",
-                    logical_block_idx, request.request_id
+                    panic!(
+                        "Logical block index {} out of bounds for request {}",
+                        logical_block_idx, request.request_id
                     )
                 }
 
@@ -73,27 +107,26 @@ impl Scheduler {
     }
 
     /// Handles which requests to run.
-    /// 
+    ///
     /// Running jobs: First the scheduler checks if a request should end (end
     /// token, going past max_token amount) -- ending a request will free its
     /// blocks and set the request to finished. The scheduler will then make sure
     /// that each running job still has space for 1 more token to generate. If
     /// not, the request needs to be preempted: it will be added back to the
     /// waiting requests to be allocated a new block.
-    /// 
+    ///
     /// Waiting jobs: if there are free blocks, then waiting requests need to be
     /// allocated. Running blocks that had to preempt (and thus become waiting)
     /// are given priority so they can continue running. If not, waiting requests
     /// prefill their inputs and become running.
-    /// 
+    ///
     /// Once the above is handled, we return the current running and finished
     /// requests.
-    fn schedule(&mut self) -> SchedulerOutput {
+    pub fn schedule(&mut self) -> SchedulerOutput {
         let mut scheduled_requests = Vec::new();
         let mut block_tables: HashMap<String, Vec<u32>> = HashMap::new();
         let mut num_tokens_per_request: HashMap<String, usize> = HashMap::new();
         let mut current_scheduled_requests: Vec<Request> = Vec::new();
-
 
         // for request in self.running.requests {
         //     if request.should_end() {
@@ -124,17 +157,21 @@ impl Scheduler {
                 RequestStatus::Finished => {
                     let finished_req = self.running.requests.remove(i)
                         .expect("Should not fail to remove request");
-                    self.block_allocator.free_multiple(finished_req.logical_blocks)
+                    self.block_allocator
+                        .free_multiple(finished_req.logical_blocks)
                         .expect("Blocks to freed should neither already be freed, or unallocated");
                     continue; // removed item so don't increment
-                },
+                }
                 RequestStatus::Preempted => {
-                    let preempted_req = self.running.requests.remove(i)
+                    let preempted_req = self
+                        .running
+                        .requests
+                        .remove(i)
                         .expect("Should not fail to remove request");
                     self.waiting.requests.push_front(preempted_req); // we add the preempted req to the front of the waiting list, so that it gets served next
                     continue; // removed item so don't increment
-                },
-                _ => {i += 1} // move to next if neither finished or preempted
+                }
+                _ => i += 1, // move to next if neither finished or preempted
             }
         }
 
@@ -142,7 +179,7 @@ impl Scheduler {
         // we check how many waiting requests we have.
         // For now we implement FCFS allocation where the FI request gets
         // allocated blocks to and added to running queue.
-        
+
         let n_free_blocks = self.block_allocator.free_blocks.len();
         while let Some(mut request) = self.waiting.requests.pop_front() {
             let blocks_needed = request.needed_blocks();
@@ -166,10 +203,8 @@ impl Scheduler {
         }
 
         // generate slot mappings
-        let slot_mappings = Scheduler::generate_slot_mappings(
-            &current_scheduled_requests,
-            &num_tokens_per_request,
-        );
+        let slot_mappings =
+            Scheduler::generate_slot_mappings(&current_scheduled_requests, &num_tokens_per_request);
 
         SchedulerOutput {
             scheduled_requests,
@@ -183,9 +218,9 @@ impl Scheduler {
         let blocks_needed = request.needed_blocks();
         let physical_blocks = match self.block_allocator.allocate_multiple(blocks_needed) {
             Some(blocks) => blocks,
-            None => return Vec::new()
+            None => return Vec::new(),
         };
-        
+
         if physical_blocks.len() < blocks_needed {
             return Vec::new();
         }
