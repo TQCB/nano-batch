@@ -63,6 +63,13 @@ impl Scheduler {
         }
     }
 
+    /// Update multiple requests with newly generated tokens
+    pub fn update(&mut self, token_updates: HashMap<String, u32>) {
+        for (request_id, new_token) in token_updates {
+            self.update_request_token(&request_id, new_token);
+        }
+    }
+
     fn generate_slot_mappings(
         scheduled_requests: &[Request],
         num_tokens_per_request: &HashMap<String, usize>,
@@ -140,7 +147,10 @@ impl Scheduler {
 
             match req.status {
                 RequestStatus::Finished => {
-                    let finished_req = self.running.requests.remove(i)
+                    let finished_req = self
+                        .running
+                        .requests
+                        .remove(i)
                         .expect("Should not fail to remove request");
                     self.block_allocator
                         .free_multiple(finished_req.logical_blocks)
@@ -176,7 +186,8 @@ impl Scheduler {
             while n_free_blocks == 0 {
                 let mut victim = self.waiting.requests.pop_back()
                     .expect("Should have been able to pop request of waiting list if there are 1. None running and 2. No more free blocks.");
-                self.block_allocator.free_multiple(victim.logical_blocks.clone())
+                self.block_allocator
+                    .free_multiple(victim.logical_blocks.clone())
                     .expect("Blocks to freed should neither already be freed, or unallocated");
 
                 victim.logical_blocks.clear();

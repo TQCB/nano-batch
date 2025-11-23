@@ -5,11 +5,24 @@ mod scheduler;
 use std::collections::HashMap;
 
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
 
 use block_allocator::BlockAllocator;
 use request::{Request, RequestStatus, SamplingParams};
 use scheduler::Scheduler;
+
+/// Type-safe Python interface for scheduler output
+#[pyclass]
+#[derive(Clone)]
+pub struct PySchedulerOutput {
+    #[pyo3(get)]
+    pub scheduled_requests: Vec<String>,
+    #[pyo3(get)]
+    pub block_tables: HashMap<String, Vec<u32>>,
+    #[pyo3(get)]
+    pub slot_mappings: Vec<u32>,
+    #[pyo3(get)]
+    pub num_tokens_per_request: HashMap<String, usize>,
+}
 
 struct InnerEngine {
     scheduler: Scheduler,
@@ -56,53 +69,19 @@ impl InnerEngine {
     }
 
     /// Runs a scheduling step and hands back a scheduler output.
-    fn step(&mut self) -> scheduler::SchedulerOutput {
-        self.scheduler.schedule()
-    }
-
-    fn convert_output_to_python(
-        &self,
-        output: scheduler::SchedulerOutput,
-        py: Python,
-    ) -> pyo3::Py<PyAny> {
-        let result = PyDict::new(py);
-
-        // scheduled_requests
-        let scheduled_requests: Vec<String> = output.scheduled_requests;
-        result
-            .set_item("scheduled_requests", scheduled_requests)
-            .unwrap();
-
-        // block_tables - convert HashMap<String, Vec<u32>> to Python dict
-        let block_tables_dict = PyDict::new(py);
-        for (request_id, blocks) in output.block_tables {
-            block_tables_dict.set_item(request_id, blocks).unwrap();
+    fn step(&mut self) -> PySchedulerOutput {
+        let output = self.scheduler.schedule();
+        PySchedulerOutput {
+            scheduled_requests: output.scheduled_requests,
+            block_tables: output.block_tables,
+            slot_mappings: output.slot_mappings,
+            num_tokens_per_request: output.num_tokens_per_request,
         }
-        result.set_item("block_tables", block_tables_dict).unwrap();
-
-        // slot_mappings
-        let slot_mappings: Vec<u32> = output.slot_mappings;
-        result.set_item("slot_mappings", slot_mappings).unwrap();
-
-        // num_tokens_per_request - convert HashMap<String, usize> to Python dict
-        let num_tokens_dict = PyDict::new(py);
-        for (request_id, num_tokens) in output.num_tokens_per_request {
-            num_tokens_dict.set_item(request_id, num_tokens).unwrap();
-        }
-        result
-            .set_item("num_tokens_per_request", num_tokens_dict)
-            .unwrap();
-
-        result.into()
     }
 
     /// Use the tokens from the python worker to update our requests.
     fn update(&mut self, token_updates: HashMap<String, u32>) {
-        // This is a simplified version - in reality you'd need more complex
-        // logic to handle multiple tokens per request, etc.
-        for (request_id, new_token) in token_updates {
-            self.scheduler.update_request_token(&request_id, new_token);
-        }
+        self.scheduler.update(token_updates);
     }
 }
 
@@ -141,9 +120,8 @@ impl Engine {
     }
 
     /// Run a scheduling step and return the batch information.
-    fn step(&mut self, py: Python) -> pyo3::Py<PyAny> {
-        let output = self.inner.step();
-        self.inner.convert_output_to_python(output, py)
+    fn step(&mut self) -> PySchedulerOutput {
+        self.inner.step()
     }
 
     /// Update requests with newly generated tokens.
