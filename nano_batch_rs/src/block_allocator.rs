@@ -1,13 +1,15 @@
-use std::{collections::HashSet};
+use std::collections::HashSet;
 
 pub struct BlockAllocator {
+    #[allow(dead_code)]
     pub num_blocks: u32,
+    #[allow(dead_code)]
     pub block_size: u32,
     pub free_blocks: Vec<u32>,
-    pub allocated_blocks: HashSet<u32>
+    pub allocated_blocks: HashSet<u32>,
 }
 
-impl BlockAllocator{
+impl BlockAllocator {
     pub fn new(num_blocks: u32, block_size: u32) -> BlockAllocator {
         let mut free_blocks: Vec<u32> = Vec::with_capacity(num_blocks as usize);
 
@@ -28,7 +30,7 @@ impl BlockAllocator{
 
     /// Return Some(free_block_id) from off the top of the free_blocks stack
     /// Returns None if there are no free blocks left.
-    /// 
+    ///
     /// Returned free block is inserted into set of allocated blocks.
     fn allocate(&mut self) -> Option<u32> {
         let free_block = self.free_blocks.pop()?;
