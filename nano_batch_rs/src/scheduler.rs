@@ -1,13 +1,15 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use crate::{
-    request::{Request, Status},
     block_allocator::BlockAllocator,
+    request::{Request, RequestStatus}
 };
 
 struct SchedulerOutput {
-    running: Vec<Request>,
-    finished: Vec<Request>
+    scheduled_requests: Vec<String>, // request ids
+    block_tables: HashMap<String, Vec<u32>>, // request id: physical block
+    slot_mappings: Vec<u32>, // token index: physical slot
+    num_tokens_per_request: HashMap<String, usize>
 }
 
 struct Queue {
@@ -24,10 +26,52 @@ struct Queue {
 pub struct Scheduler {
     waiting: Queue,
     running: Queue,
-    block_alloctor: BlockAllocator
+    block_allocator: BlockAllocator,
 }
 
 impl Scheduler {
+    fn generate_slot_mappings(
+        scheduled_requests: &[Request],
+        num_tokens_per_request: &HashMap<String, usize>,
+    ) -> Vec<u32> {
+        let mut slot_mappings = Vec::new();
+
+        for request in scheduled_requests {
+            let block_size = request.block_size;
+            let num_tokens_to_process = *num_tokens_per_request
+                .get(&request.request_id)
+                .expect("Scheduled request not found in num_tokens_per_request map");
+
+            // find starting token index
+            // for prefill its 0
+            // for decode its total tokens
+            let start_token_idx_in_request = match request.status {
+                RequestStatus::Preempted => 0,
+                RequestStatus::Waiting => request.num_tokens(),
+                _ => panic!("Should not be scheduling running or finished requests.")
+            };
+
+            for i in 0..num_tokens_to_process {
+                let current_token_idx_in_request = start_token_idx_in_request + i;
+
+                let logical_block_idx = current_token_idx_in_request / block_size;
+                let offset_in_block = current_token_idx_in_request % block_size;
+
+                if logical_block_idx >= request.logical_blocks.len() {
+                    panic!("Logical block index {} out of bounds for request {}",
+                    logical_block_idx, request.request_id
+                    )
+                }
+
+                let physical_block_id = request.logical_blocks[logical_block_idx];
+                let physical_slot_idx = (physical_block_id as usize * block_size) + offset_in_block;
+                slot_mappings.push(physical_slot_idx as u32)
+            }
+        }
+
+        slot_mappings
+    }
+
     /// Handles which requests to run.
     /// 
     /// Running jobs: First the scheduler checks if a request should end (end
@@ -44,38 +88,108 @@ impl Scheduler {
     /// 
     /// Once the above is handled, we return the current running and finished
     /// requests.
-    fn schedule(&self) -> SchedulerOutput {
-        for request in self.running.requests {
-            if request.should_end() {
-                // get blocks from request
-                // free those blocks
-                // remove request from running queue
-            } else if request.should_preempt() {
-                // check how many tokens we need to generate, and how much space
-                // is left in the request's blocks.
-                // if there is no more space, we send the request
-                // to the wait queue with queue.push_front()
+    fn schedule(&mut self) -> SchedulerOutput {
+        let mut scheduled_requests = Vec::new();
+        let mut block_tables: HashMap<String, Vec<u32>> = HashMap::new();
+        let mut num_tokens_per_request: HashMap<String, usize> = HashMap::new();
+        let mut current_scheduled_requests: Vec<Request> = Vec::new();
+
+
+        // for request in self.running.requests {
+        //     if request.should_end() {
+        //         // get blocks from request
+        //         // free those blocks
+        //         // remove request from running queue
+        //         request.status = RequestStatus::Finished;
+        //     } else if request.should_preempt() {
+        //         // check how many tokens we need to generate, and how much space
+        //         // is left in the request's blocks.
+        //         // if there is no more space, we send the request
+        //         // to the wait queue with queue.push_front()
+        //         request.status = RequestStatus::Preempted;
+        //     }
+        // };
+
+        let mut i = 0;
+        while i < self.running.requests.len() {
+            let req = &mut self.running.requests[i];
+
+            if req.should_end() {
+                req.status = RequestStatus::Finished;
+            } else if req.should_preempt() {
+                req.status = RequestStatus::Preempted;
             }
-        };
+
+            match req.status {
+                RequestStatus::Finished => {
+                    let finished_req = self.running.requests.remove(i)
+                        .expect("Should not fail to remove request");
+                    self.block_allocator.free_multiple(finished_req.logical_blocks)
+                        .expect("Blocks to freed should neither already be freed, or unallocated");
+                    continue; // removed item so don't increment
+                },
+                RequestStatus::Preempted => {
+                    let preempted_req = self.running.requests.remove(i)
+                        .expect("Should not fail to remove request");
+                    self.waiting.requests.push_front(preempted_req); // we add the preempted req to the front of the waiting list, so that it gets served next
+                    continue; // removed item so don't increment
+                },
+                _ => {i += 1} // move to next if neither finished or preempted
+            }
+        }
 
         // Once we're done handling the running requests,
         // we check how many waiting requests we have.
         // For now we implement FCFS allocation where the FI request gets
         // allocated blocks to and added to running queue.
         
-        let n_free_blocks = self.block_alloctor.n_free_blocks();
-        for request in self.waiting.requests {
-            match request.status {
-                Status::WaitingDecode => {
+        let n_free_blocks = self.block_allocator.free_blocks.len();
+        while let Some(mut request) = self.waiting.requests.pop_front() {
+            let blocks_needed = request.needed_blocks();
 
-                },
-                Status::WaitingPrefill => {
-                    
-                },
-                _ => panic!("Running or finished job found in waiting queue.")
+            if n_free_blocks >= blocks_needed {
+                let allocated_blocks = self.allocate_blocks_for_request(&request);
+                request.assign_physical_blocks(allocated_blocks.clone());
+                request.status = RequestStatus::Running;
+
+                scheduled_requests.push(request.request_id.clone());
+                block_tables.insert(request.request_id.clone(), allocated_blocks);
+                num_tokens_per_request.insert(request.request_id.clone(), request.num_tokens());
+                current_scheduled_requests.push(request.clone()); // clone for slot
+
+                self.running.requests.push_back(request);
+            } else {
+                // not enough blocks, put it back and stop
+                self.waiting.requests.push_front(request);
+                break;
             }
         }
 
-        SchedulerOutput { running: (), finished: ()}
+        // generate slot mappings
+        let slot_mappings = Scheduler::generate_slot_mappings(
+            &current_scheduled_requests,
+            &num_tokens_per_request,
+        );
+
+        SchedulerOutput {
+            scheduled_requests,
+            block_tables,
+            slot_mappings,
+            num_tokens_per_request,
+        }
+    }
+
+    fn allocate_blocks_for_request(&mut self, request: &Request) -> Vec<u32> {
+        let blocks_needed = request.needed_blocks();
+        let physical_blocks = match self.block_allocator.allocate_multiple(blocks_needed) {
+            Some(blocks) => blocks,
+            None => return Vec::new()
+        };
+        
+        if physical_blocks.len() < blocks_needed {
+            return Vec::new();
+        }
+
+        physical_blocks
     }
 }
