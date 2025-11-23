@@ -183,7 +183,7 @@ impl Scheduler {
             }
             // once we have free blocks, we add the victims back to waiting
             // in reverse order so FIFO is conserved
-            self.waiting.requests.extend(victims);
+            self.waiting.requests.extend(victims.into_iter().rev());
         }
 
         while let Some(mut request) = self.waiting.requests.pop_front() {
