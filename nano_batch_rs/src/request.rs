@@ -8,18 +8,20 @@ pub enum RequestStatus {
 
 #[derive(Clone)]
 pub struct SamplingParams {
-    temperature: f32,
-    top_p: f32,
-    max_tokens: usize,
-    stop_tokens: Vec<u32>
+    #[allow(dead_code)]
+    pub temperature: f32,
+    #[allow(dead_code)]
+    pub top_p: f32,
+    pub max_tokens: usize,
+    pub stop_tokens: Vec<u32>,
 }
 
 #[derive(Clone)]
 pub struct Request {
-    pub request_id: String, // unique identifier
+    pub request_id: String,         // unique identifier
     pub prompt_token_ids: Vec<u32>, // initial input
     pub output_token_ids: Vec<u32>, // generated tokens
-    pub status: RequestStatus, // state
+    pub status: RequestStatus,      // state
     pub sampling_params: SamplingParams,
 
     // blocks
@@ -62,7 +64,7 @@ impl Request {
             RequestStatus::Preempted => 1,
             // (a + b - 1) / b = ceil_div(a, b)
             RequestStatus::Waiting => (self.num_tokens() + self.block_size - 1) / self.block_size,
-            _ => panic!("Should not check how many blocks finished or running requests need.")
+            _ => panic!("Should not check how many blocks finished or running requests need."),
         }
     }
 
@@ -71,7 +73,7 @@ impl Request {
         match self.status {
             RequestStatus::Waiting => self.status = RequestStatus::Running,
             RequestStatus::Preempted => self.status = RequestStatus::Running,
-            _ => panic!("Should not be assigning blocks to finished or running requests.")
+            _ => panic!("Should not be assigning blocks to finished or running requests."),
         }
     }
 }
