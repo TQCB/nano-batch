@@ -174,10 +174,12 @@ impl Scheduler {
         if self.running.requests.len() == 0 && n_free_blocks == 0 {
             let mut victims = Vec::new();
             while n_free_blocks == 0 {
-                let victim = self.waiting.requests.pop_back()
+                let mut victim = self.waiting.requests.pop_back()
                     .expect("Should have been able to pop request of waiting list if there are 1. None running and 2. No more free blocks.");
                 self.block_allocator.free_multiple(victim.logical_blocks.clone())
                     .expect("Blocks to freed should neither already be freed, or unallocated");
+
+                victim.logical_blocks.clear();
 
                 victims.push(victim);
             }
