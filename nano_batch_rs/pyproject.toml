@@ -5,3 +5,4 @@ build-backend = "maturin"
 [tool.maturin]
 # set source dir of python module code
 python-source = "python"
+module-name = "nano_batch._nano_batch"

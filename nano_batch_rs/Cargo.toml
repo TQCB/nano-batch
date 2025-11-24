@@ -1,10 +1,10 @@
 [package]
-name = "nano-batch-rs"
+name = "nano_batch_rs"
 version = "0.1.0"
 edition = "2024"
 
 [lib]
-name = "_nano_batch"
+name = "nano_batch"
 crate-type = ["cdylib"]
 
 [dependencies.pyo3]
