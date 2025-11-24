@@ -87,7 +87,8 @@ impl Scheduler {
             // for decode its total tokens
             let start_token_idx_in_request = match request.status {
                 RequestStatus::Preempted => 0,
-                RequestStatus::Waiting => request.num_tokens(),
+                RequestStatus::Waiting => 0, // First time scheduling: prefill all prompt tokens
+                RequestStatus::Running => request.num_tokens() - num_tokens_to_process, // Decode phase: start from where we left off
                 _ => panic!("Should not be scheduling running or finished requests."),
             };
 
