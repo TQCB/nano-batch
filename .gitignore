@@ -3,6 +3,7 @@ outline
 
 # Python
 .env
+nano_batch_rs/python/nano_batch/__pycache__/
 
 # Rust
 target
