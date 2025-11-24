@@ -1,0 +1,11 @@
+# Python Dependencies
+
+# Core dependencies
+torch>=2.0.0
+transformers>=4.35.0
+
+# Development and testing
+pytest>=7.0.0
+
+# Benchmarking
+matplotlib>=3.5.0
