@@ -2,8 +2,12 @@ vllm
 outline
 
 # Python
-.env
+# .env
 nano_batch_rs/python/nano_batch/__pycache__/
+model
 
 # Rust
 target
+
+# benchmarks
+*.json
