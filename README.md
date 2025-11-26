@@ -14,7 +14,7 @@ I benchmarked `nano_batch` against a standard HuggingFace baseline using a Mistr
 
 ### 1. Throughput Comparison (4.4x Speedup)
 
-Our engine achieves **300+ tokens/s** compared to the baseline's ~70 tokens/s.
+The engine achieves **300+ tokens/s** compared to the baseline's ~70 tokens/s.
 
 ![Throughput Comparison](images/mistral_throughput.png)
 
@@ -26,7 +26,7 @@ The real power of `nano_batch` lies in its ability to scale with concurrency. Wh
 
 ### 3. Latency Reduction
 
-We achieve a **92% reduction in First Token Latency (TTFT)** and **77% lower Average Latency** per token. This ensures a significantly snappier user experience even under load.
+We achieve a **92% reduction in First Token Latency (TTFT)** and **77% lower Average Latency** per token, meaning a significantly snappier user experience even under load in theory.
 
 ![Latency Comparison](images/mistral_latency.png)
 
