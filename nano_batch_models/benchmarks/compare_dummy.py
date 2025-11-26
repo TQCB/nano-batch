@@ -214,12 +214,12 @@ def main():
     print_comparison_report(baseline, nano_batch, metrics)
     
     # Create plots
-    try:
-        create_comparison_plots(baseline, nano_batch)
-    except ImportError:
-        print("\nNote: matplotlib not available, skipping plots")
-    except Exception as e:
-        print(f"\nNote: Could not create plots: {e}")
+    # try:
+    #     create_comparison_plots(baseline, nano_batch)
+    # except ImportError:
+    #     print("\nNote: matplotlib not available, skipping plots")
+    # except Exception as e:
+    #     print(f"\nNote: Could not create plots: {e}")
 
 
 if __name__ == "__main__":
