@@ -70,6 +70,7 @@ impl Scheduler {
         }
     }
 
+    /// NEED TO DOCUMENT
     fn generate_slot_mappings(
         scheduled_requests: &[Request],
         num_tokens_per_request: &HashMap<String, usize>,

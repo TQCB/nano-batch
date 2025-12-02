@@ -8,7 +8,6 @@ with synthetic tensors (no real model required).
 import torch
 from nano_batch import Engine, paged_attention_fwd, KVCache
 
-
 def main():
     print("=== nano_batch Core Engine Demo ===\n")
     
@@ -103,10 +102,10 @@ def main():
                 block_size,
             )
             print(f"PagedAttention output shape: {attn_output.shape}")
-            print("✓ PagedAttention kernel executed successfully")
+            print(" PagedAttention kernel executed successfully")
         except AssertionError as e:
-            print(f"Note: {e}")
-            print("(This is expected - we need proper KV data for full execution)")
+            print(f"note: {e}")
+            print("(expected - we need proper KV data for full execution)")
     
     # Simulate token generation
     print("\n--- Simulating Token Generation ---")
@@ -120,14 +119,6 @@ def main():
         output = engine.step()
         if output.scheduled_requests:
             print(f"  Block table size: {len(output.block_tables[request_id])} blocks")
-    
-    print("\n=== Demo Complete ===")
-    print("\nThis demonstrates the core nano_batch engine:")
-    print("  ✓ Rust-based scheduler with block allocation")
-    print("  ✓ PagedAttention kernel (PyTorch)")
-    print("  ✓ KV cache management")
-    print("\nFor full model implementations, see nano_batch_models/")
-
 
 if __name__ == "__main__":
     main()
