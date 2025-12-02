@@ -11,4 +11,4 @@ target
 
 # benchmarks
 *.json
-/nano_batch_modelsg
+/nano_batch_models
