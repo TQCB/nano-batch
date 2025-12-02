@@ -30,14 +30,14 @@ The real power of `nano_batch` lies in its ability to scale with concurrency. Wh
 
 ### 3. Latency Reduction
 
-We achieve a **92% reduction in First Token Latency (TTFT)** and **77% lower Average Latency** per token, meaning a significantly snappier user experience even under load in theory.
+I achieve a **92% reduction in First Token Latency (TTFT)** and **77% lower Average Latency** per token, meaning a significantly snappier user experience even under load in theory.
 
 ![Latency Comparison](images/mistral_latency.png)
 
-## Architecture
-
-- **`nano_batch_rs`**: Rust crate containing the `Scheduler`, `BlockAllocator`, and `Request` management.
-- **`nano_batch_models`**: Python package with the `InferenceEngine`, `PagedMistral` model, and benchmarks.
+## TODO:
+- More benchmarks
+- Trition paged attention kernel (could properly use the slot mappings)
+- Run on full weight mistral 7B model
 
 ## Acknowledgments
 
